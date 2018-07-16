@@ -5,7 +5,8 @@ from toolkit.pytorch_transformers.models import Model
 from toolkit.pytorch_transformers.callbacks import CallbackList, TrainingMonitor, ModelCheckpoint, \
     ExperimentTiming, ExponentialLRScheduler, EarlyStopping, NeptuneMonitor, ValidationMonitor
 
-from .parallel import DataParallelCriterion, DataParallelModel as DataParallel
+from .parallel import DataParallelCriterion #, DataParallelModel as DataParallel
+from torch.nn import DataParallel
 from .callbacks import NeptuneMonitorDetection, ValidationMonitorDetection
 from .retinanet import RetinaNet, RetinaLoss
 
@@ -24,6 +25,8 @@ class ModelParallel(Model):
 
         batch_gen, steps = datagen
         for epoch_id in range(self.training_config['epochs']):
+            # import pdb
+            # pdb.set_trace()
             self.callbacks.on_epoch_begin()
             for batch_id, data in enumerate(batch_gen):
                 self.callbacks.on_batch_begin()
@@ -38,6 +41,7 @@ class ModelParallel(Model):
         return self
 
     def _fit_loop(self, data):
+        self.model.module.freeze_bn()
         X = data[0]
         targets_tensors = data[1:]
 
@@ -53,11 +57,23 @@ class ModelParallel(Model):
                 targets_var.append(Variable(target_tensor))
 
         self.optimizer.zero_grad()
+
+        summ = torch.zeros(1)
+        count = 0
+        for name, param in self.model.named_parameters():
+            summ += param.data.cpu().mean()
+            count += 1
+        summ /= count
+        print('fittttttt', summ, X)
         outputs_batch = self.model(X)
+        # import pdb
+        # pdb.set_trace()
         partial_batch_losses = {}
+        print('fit_out', outputs_batch.size(), outputs_batch)
 
         if len(self.output_names) == 1:
             for (name, loss_function, weight), target in zip(self.loss_function, targets_var):
+                print('fit_loop', target)
                 batch_loss = loss_function(outputs_batch, target) * weight
         else:
             for (name, loss_function, weight), output, target in zip(self.loss_function, outputs_batch, targets_var):
@@ -66,6 +82,11 @@ class ModelParallel(Model):
         partial_batch_losses['sum'] = batch_loss
         batch_loss.backward()
         self.optimizer.step()
+
+        summ = torch.zeros(1)
+        for name, param in self.model.named_parameters():
+            summ += param.data.cpu().mean()
+        print('afffffff', summ)
 
         return partial_batch_losses
 
@@ -95,9 +116,10 @@ class Retina(ModelParallel):
         self.pretrained = self.architecture_config['model_params']['pretrained']
         self.set_model()
         self.weight_regularization = weight_regularization
+#        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.9, weight_decay=1e-4)
         self.optimizer = optim.Adam(self.weight_regularization(self.model, **architecture_config['regularizer_params']),
                                     **architecture_config['optimizer_params'])
-        self.loss_function = [('FocalLoss', DataParallelCriterion(RetinaLoss(num_classes=self.num_classes)), 1.0)]
+        self.loss_function = [('FocalLoss', RetinaLoss(num_classes=self.num_classes), 1.0)]
         self.callbacks = callbacks(self.callbacks_config)
 
     def transform(self, datagen, *args, **kwargs):
@@ -120,7 +142,8 @@ class Retina(ModelParallel):
             else:
                 X = Variable(X, volatile=True)
 
-            boxes_batch, labels_batch = self.model(X)
+            outputs_batch = self.model(X)
+            boxes_batch, labels_batch = outputs_batch[:, :, :4].data.cpu(), outputs_batch[:, :, 4:].data.cpu()
             boxes.extend([box for box in boxes_batch])
             labels.extend([label for label in labels_batch])
             if batch_id == steps:

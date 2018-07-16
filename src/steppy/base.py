@@ -442,6 +442,7 @@ class Step:
             return self.adapter.adapt(step_inputs)
         except AdapterError as e:
             msg = "Error while adapting step '{}'. Check Step inputs".format(self.name)
+            print(msg)
             raise StepsError(msg) from e
 
     def _unpack(self, step_inputs):

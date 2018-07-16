@@ -27,6 +27,10 @@ class GoogleAiLabelEncoder(BaseTransformer):
 
 
 class GoogleAiLabelDecoder(BaseTransformer):
-    def transform(self, label_encoder):
-        inverse_mapping = {val: name for name, val in label_encoder.category_mapping[0]['mapping']}
+    def __init__(self, label_encoder):
+        super().__init__()
+        self.label_encoder = label_encoder
+
+    def transform(self):
+        inverse_mapping = {val: name for name, val in self.label_encoder.category_mapping[0]['mapping']}
         return {'inverse_mapping': inverse_mapping}

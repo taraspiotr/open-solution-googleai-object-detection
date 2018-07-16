@@ -81,6 +81,10 @@ class ImageDetectionDataset(Dataset):
             label = box_row['LabelName']
             boxes.append([x_min, y_min, x_max, y_max])
             labels.append(label)
+        # boxes, labels = [], []
+        # if len(labels) == 0:
+        #     raise Exception('no annotations for imaga')
+        # print('loader', boxes, labels)
         return torch.FloatTensor(boxes), torch.FloatTensor(labels)
 
     def collate_fn(self, batch):
@@ -101,12 +105,16 @@ class ImageDetectionDataset(Dataset):
         bbox_targets, clf_targets = [], []
         for box, label in zip(boxes, labels):
             bbox_target, clf_target = self.target_encoder.encode(box, label, input_size=input_size)
+            print('SIZE', bbox_target.size())
             bbox_targets.append(bbox_target)
             clf_targets.append(clf_target)
 
         bbox_targets, clf_targets = torch.stack(bbox_targets), torch.stack(clf_targets)
+        print('bbox', bbox_targets.size())
         clf_targets = clf_targets.unsqueeze(-1)
         targets = torch.cat((bbox_targets, clf_targets), 2)
+        print('types', type(inputs), type(targets))
+        print('sizes', inputs.size(), targets.size())
         return inputs, targets
 
 
@@ -133,7 +141,7 @@ class ImageDetectionLoader(BaseTransformer):
             flow, steps = self.get_datagen(ids, None, None, False, self.loader_params.training)
 
         if valid_ids is not None:
-            valid_flow, valid_steps = self.get_datagen(valid_ids, annotations, annotations_human_labels, False,
+            valid_flow, valid_steps = self.get_datagen(valid_ids, annotations, annotations_human_labels, True,
                                                        self.loader_params.training)
         else:
             valid_flow = None
@@ -151,8 +159,8 @@ class ImageDetectionLoader(BaseTransformer):
                                    train_mode=True,
                                    image_transform=self.image_transform)
             datagen = DataLoader(dataset, **loader_params,
-                                 sampler=RandomSubsetSampler(data_size=len(dataset),
-                                                             sample_size=self.dataset_params.sample_size),
+                                 # sampler=RandomSubsetSampler(data_size=len(dataset),
+                                 #                             sample_size=self.dataset_params.sample_size),
                                  collate_fn=dataset.collate_fn)
         else:
             dataset = self.dataset(ids,
@@ -163,8 +171,7 @@ class ImageDetectionLoader(BaseTransformer):
                                    train_mode=False,
                                    image_transform=self.image_transform)
 
-            datagen = DataLoader(dataset, **loader_params,
-                                 collate_fn=dataset.collate_fn)
+            datagen = DataLoader(dataset, **loader_params)
         steps = len(datagen)
         return datagen, steps
 

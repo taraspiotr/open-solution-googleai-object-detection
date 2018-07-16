@@ -228,12 +228,25 @@ class RetinaLoss(nn.Module):
         masked_loc_targets = loc_targets[mask].view(-1,4)  # [#pos,4]
 
         pos_neg = cls_targets > -1  # exclude ignored anchors
+        num_pos_neg = pos_neg.data.long().sum()
         mask = pos_neg.unsqueeze(2).expand_as(cls_preds)
         masked_cls_preds = cls_preds[mask].view(-1,self.num_classes)
 
         loc_loss = F.smooth_l1_loss(masked_loc_preds, masked_loc_targets, size_average=False)
         cls_loss = self.focal_loss(masked_cls_preds, cls_targets[pos_neg])
-        loss = (loc_loss+cls_loss)/num_pos
+
+        # print('loc_loss = {}, num_pos = {}; cls_loss = {}, num_pos_neg = {}'.format(loc_loss.data.cpu().numpy(), num_pos, cls_loss.data.cpu().numpy(), num_pos_neg))
+#         if num_pos_neg > 0:
+#             cls_loss = cls_loss / num_pos_neg
+#             loss = cls_loss*10
+#         else:
+#             raise Exception('num_pos_neg == 0')
+#         if num_pos > 0:
+#             loc_loss = loc_loss / num_pos
+#             loss += loc_loss
+# #            print('cls_loss = {}, loc_loss = {}, loss = {}'.format(cls_loss, loc_loss, loss))
+        print('num', num_pos, num_pos_neg)
+        loss = (loc_loss + cls_loss) / num_pos
         return loss
 
 
@@ -242,6 +255,9 @@ class BaseDataHandler():
         self.anchor_areas = [32*32., 64*64., 128*128., 256*256., 512*512.]  # p3 -> p7
         self.aspect_ratios = [1/2., 1/1., 2/1.]
         self.scale_ratios = [1., pow(2,1/3.), pow(2,2/3.)]
+        # self.aspect_ratios = [1/1.]
+        # self.scale_ratios = [1., pow(2,1/2.)]
+        self.num_anchors_per_cell = len(self.aspect_ratios) * len(self.scale_ratios)
         self.anchor_wh = self._get_anchor_hw()
 
     def _get_anchor_hw(self):
@@ -281,8 +297,8 @@ class BaseDataHandler():
             grid_size = input_size / fm_size
             fm_h, fm_w = int(fm_size[0]), int(fm_size[1])
             xy = meshgrid(fm_h,fm_w) + 0.5  # [fm_h*fm_w, 2]
-            xy = (xy*grid_size).view(fm_w,fm_h,1,2).expand(fm_w,fm_h,9,2)
-            hw = self.anchor_wh[i].view(1,1,9,2).expand(fm_w,fm_h,9,2)
+            xy = (xy*grid_size).view(fm_w,fm_h,1,2).expand(fm_w,fm_h,self.num_anchors_per_cell,2)
+            hw = self.anchor_wh[i].view(1,1,self.num_anchors_per_cell,2).expand(fm_w,fm_h,self.num_anchors_per_cell,2)
             box = torch.cat([xy,hw], 3)  # [x,y,w,h]
             boxes.append(box.view(-1,4))
         return torch.cat(boxes, 0)
@@ -311,29 +327,34 @@ class DataEncoder(BaseDataHandler):
         input_size = torch.Tensor([input_size,input_size]) if isinstance(input_size, int) \
                      else torch.Tensor(input_size)
         anchor_boxes = self._get_anchor_boxes(input_size)
-        boxes = change_box_order(boxes, 'xyxy2xywh')
+        print('anchors len', len(anchor_boxes), input_size)
+        if len(boxes) > 0:
+            boxes = change_box_order(boxes, 'xyxy2xywh')
+            ious = box_iou(anchor_boxes, boxes, order='xywh')
 
-        ious = box_iou(anchor_boxes, boxes, order='xywh')
-        max_ious, max_ids = ious.max(1)
-        boxes = boxes[max_ids]
+            max_ious, max_ids = ious.max(1)
+            boxes = boxes[max_ids]
 
-        loc_xy = (boxes[:,:2]-anchor_boxes[:,:2]) / anchor_boxes[:,2:]
-        loc_hw = torch.log(boxes[:,2:]/anchor_boxes[:,2:])
-        loc_targets = torch.cat([loc_xy,loc_hw], 1)
-        cls_targets = 1 + labels[max_ids]
+            loc_xy = (boxes[:,:2]-anchor_boxes[:,:2]) / anchor_boxes[:,2:]
+            loc_hw = torch.log(boxes[:,2:]/anchor_boxes[:,2:])
+            loc_targets = torch.cat([loc_xy,loc_hw], 1)
+            cls_targets = 1 + labels[max_ids]
 
-        cls_targets[max_ious<0.5] = 0
-        ignore = (max_ious>0.4) & (max_ious<0.5)  # ignore ious between [0.4,0.5]
-        cls_targets[ignore] = -1  # for now just mark ignored to -1
+            cls_targets[max_ious<0.5] = 0
+            ignore = (max_ious>0.4) & (max_ious<0.5)  # ignore ious between [0.4,0.5]
+            cls_targets[ignore] = -1  # for now just mark ignored to -1
+        else:
+            loc_targets = torch.zeros(len(anchor_boxes), 4)
+            cls_targets = torch.zeros(len(anchor_boxes))
         return loc_targets, cls_targets
 
 
 class DataDecoder(BaseDataHandler, BaseTransformer):
 
-    def transform(self, box_predictions, class_predictions, target_sizes):
+    def transform(self, box_predictions, class_predictions):
         results = []
-        for bboxes, class_scores, target_size in zip(box_predictions, class_predictions, target_sizes):
-            results.append(self.decode(bboxes, class_scores, target_size))
+        for bboxes, class_scores in zip(box_predictions, class_predictions):
+            results.append(self.decode(bboxes, class_scores, 512))
         return {'results': results}
 
     def decode(self, loc_preds, cls_preds, input_size):
@@ -354,7 +375,9 @@ class DataDecoder(BaseDataHandler, BaseTransformer):
         input_size = torch.Tensor([input_size,input_size]) if isinstance(input_size, int) \
                      else torch.Tensor(input_size)
         anchor_boxes = self._get_anchor_boxes(input_size)
-
+        print('anchors', anchor_boxes.size())
+        print('types', type(loc_preds), type(cls_preds))
+        print('shapes', loc_preds.size(), cls_preds.size())
         loc_xy = loc_preds[:,:2]
         loc_hw = loc_preds[:,2:]
 

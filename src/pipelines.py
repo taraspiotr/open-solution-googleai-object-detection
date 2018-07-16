@@ -37,7 +37,7 @@ def retinanet(config, train_mode):
                   experiment_directory=config.env.cache_dirpath,
                   persist_output=persist_output,
                   load_persisted_output=load_persisted_output)
-    return output
+    return postprocessor
 
 
 def preprocessing_generator(config, is_train):
@@ -65,7 +65,7 @@ def preprocessing_generator(config, is_train):
     else:
         loader = Step(name='loader',
                       transformer=ImageDetectionLoader(train_mode=False, **config.loader),
-                      input_data=['specs'],
+                      input_data=['input'],
                       input_steps=[label_encoder],
                       adapter=Adapter({'ids': E('input', 'img_ids'),
                                        'annotations': None,
@@ -76,25 +76,28 @@ def preprocessing_generator(config, is_train):
 
 
 def postprocessing(model, label_encoder, config):
-    label_decoder = Step(name='label_decoder',
-                         transformer=GoogleAiLabelDecoder(label_encoder.transformer),
-                         input_steps=[model],
-                         experiment_directory=config.env.cache_dirpath)
+    # label_decoder = Step(name='label_decoder',
+    #                      transformer=GoogleAiLabelDecoder(label_encoder.transformer),
+    #                      input_steps=[model],
+    #                      experiment_directory=config.env.cache_dirpath)
 
     decoder = Step(name='decoder',
                    transformer=DataDecoder(),
-                   input_steps=[model, ],
+                   input_steps=[model],
+                   adapter=Adapter({'box_predictions': E(model.name, 'boxes_prediction'),
+                                    'class_predictions': E(model.name, 'labels_prediction'),
+                                    }),
                    experiment_directory=config.env.cache_dirpath)
 
-    submission_producer = Step(name='submission_producer',
-                               transformer=PredictionFormatter(**config.postprocessing.prediction_formatter),
-                               input_steps=[label_decoder,],
-                               input_data=['input', ],
-                               adapter=Adapter({'image_ids': E('input', 'img_ids'),
-                                        'results': E(decoder.name, 'results'),
-                                        'decoder_dict': E(label_decoder.name, 'inverse_mapping')}),
-                               experiment_directory=config.env.cache_dirpath)
-    return submission_producer
+    # submission_producer = Step(name='submission_producer',
+    #                            transformer=PredictionFormatter(**config.postprocessing.prediction_formatter),
+    #                            input_steps=[label_decoder,],
+    #                            input_data=['input', ],
+    #                            adapter=Adapter({'image_ids': E('input', 'img_ids'),
+    #                                     'results': E(decoder.name, 'results'),
+    #                                     'decoder_dict': E(label_decoder.name, 'inverse_mapping')}),
+    #                            experiment_directory=config.env.cache_dirpath)
+    return decoder
 
 
 PIPELINES = {'retinanet': {'train': partial(retinanet, train_mode=True),

@@ -105,7 +105,7 @@ SOLUTION_CONFIG = AttrDict({
                                 # 'outputs_to_plot': params.unet_outputs_to_plot
                                 },
             'early_stopping': {'patience': params.patience,
-                               'minimize': not params.validate_with_map
+#                               'minimize': not params.validate_with_map
                                },
         },
     },

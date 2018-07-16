@@ -31,6 +31,8 @@ class PipelineManager:
 
 
 def train(pipeline_name, dev_mode):
+    dev_mode = True
+
     LOGGER.info('training')
     if bool(PARAMS.clean_experiment_directory_before_training) and os.path.isdir(PARAMS.experiment_dir):
         shutil.rmtree(PARAMS.experiment_dir)
@@ -38,17 +40,23 @@ def train(pipeline_name, dev_mode):
     annotations = pd.read_csv(PARAMS.annotations_filepath)
     annotations_human_labels = pd.read_csv(PARAMS.annotations_human_verification_filepath)
 
-    if PARAMS.default_valid_ids:
-        valid_ids_data = pd.read_csv(PARAMS.valid_ids_filepath).sample(PARAMS.validation_sample_size, random_state=SEED)
-        valid_img_ids = valid_ids_data[ID_COLUMN].tolist()
-        train_img_ids = list(set(annotations[ID_COLUMN].values) - set(valid_img_ids))
-    else:
-        raise NotImplementedError
+    # if PARAMS.default_valid_ids:
+    #     valid_ids_data = pd.read_csv(PARAMS.valid_ids_filepath).sample(PARAMS.validation_sample_size, random_state=SEED)
+    #     valid_img_ids = valid_ids_data[ID_COLUMN].tolist()
+    #     train_img_ids = list(set(annotations[ID_COLUMN].values) - set(valid_img_ids))
+    # else:
+    #     raise NotImplementedError
+    #
+    # if dev_mode:
+    #     train_img_ids = train_img_ids[:100]
+    #     valid_img_ids = valid_img_ids[:20]
 
-    if dev_mode:
-        train_img_ids = train_img_ids[:100]
-        valid_img_ids = valid_img_ids[:20]
-
+    train_img_ids = ['b325fbcd461abcaf']
+    valid_img_ids = train_img_ids
+    print(train_img_ids)
+    # from random import shuffle
+    # shuffle(train_img_ids)
+    # train_img_ids, valid_img_ids = train_img_ids[:-10000], valid_img_ids[-10000:]
     SOLUTION_CONFIG['loader']['dataset_params']['images_dir'] = PARAMS.train_imgs_dir
 
     data = {'input': {'img_ids': train_img_ids
@@ -70,6 +78,7 @@ def evaluate(pipeline_name, dev_mode, chunk_size):
     LOGGER.info('evaluating')
 
     annotations = pd.read_csv(PARAMS.annotations_filepath)
+    annotations_human_labels = pd.read_csv(PARAMS.annotations_human_verification_filepath)
 
     if PARAMS.default_valid_ids:
         valid_ids_data = pd.read_csv(PARAMS.valid_ids_filepath)
@@ -83,7 +92,7 @@ def evaluate(pipeline_name, dev_mode, chunk_size):
     SOLUTION_CONFIG['loader']['dataset_params']['images_dir'] = PARAMS.train_imgs_dir
 
     pipeline = PIPELINES[pipeline_name]['inference'](SOLUTION_CONFIG)
-    prediction = generate_prediction(valid_img_ids, pipeline, chunk_size)
+    prediction = generate_prediction(valid_img_ids, pipeline, chunk_size, annotations, annotations_human_labels)
 
     LOGGER.info('Calculating mean average precision')
     mean_average_precision = map_evaluation(annotations, prediction)
@@ -120,21 +129,27 @@ def make_submission(submission_filepath):
     LOGGER.info('Kaggle submit completed')
 
 
-def generate_prediction(img_ids, pipeline, chunk_size):
+def generate_prediction(img_ids, pipeline, chunk_size, annotations, annotations_human_labels):
     if chunk_size is not None:
         return _generate_prediction_in_chunks(img_ids, pipeline, chunk_size)
     else:
-        return _generate_prediction(img_ids, pipeline)
+        return _generate_prediction(img_ids, pipeline, annotations, annotations_human_labels)
 
 
-def _generate_prediction(img_ids, pipeline):
+def _generate_prediction(img_ids, pipeline, annotations, annotations_human_labels):
+    img_ids = ['b325fbcd461abcaf']
     data = {'input': {'img_ids': img_ids
                       },
+            'metadata': {'annotations': annotations,
+                         'annotations_human_labels': annotations_human_labels
+                         }
             }
-
+    import pdb
+    # pdb.set_trace()
     pipeline.clean_cache()
     output = pipeline.transform(data)
     pipeline.clean_cache()
+    pdb.set_trace()
     return output['y_pred']
 
 
