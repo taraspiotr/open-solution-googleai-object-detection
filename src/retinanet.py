@@ -142,9 +142,13 @@ class RetinaNet(nn.Module):
     def _make_head(self, out_planes):
         layers = []
         for _ in range(4):
-            layers.append(nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1))
+            head_layer = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
+            head_layer.__name__ = 'head_layer'
+            layers.append(head_layer)
             layers.append(nn.ReLU(True))
-        layers.append(nn.Conv2d(256, out_planes, kernel_size=3, stride=1, padding=1))
+        final_layer = nn.Conv2d(256, out_planes, kernel_size=3, stride=1, padding=1)
+        final_layer.__name__ = 'final_layer'
+        layers.append(final_layer)
         return nn.Sequential(*layers)
 
     def freeze_bn(self):
@@ -152,6 +156,10 @@ class RetinaNet(nn.Module):
         for layer in self.modules():
             if isinstance(layer, nn.BatchNorm2d):
                 layer.eval()
+
+    def train(self, mode=True):
+        super().train(mode)
+        self.freeze_bn()
 
 
 class RetinaLoss(nn.Module):

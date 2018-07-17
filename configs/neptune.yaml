@@ -59,6 +59,7 @@ parameters:
   encoder_depth: 50
   num_classes: 500
   pretrained: 1
+  pi: 0.01
 
 # Training schedule
   epochs_nr: 100

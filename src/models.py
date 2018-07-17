@@ -1,3 +1,6 @@
+from functools import partial
+from math import log
+
 import torch
 from torch.autograd import Variable
 from torch import optim
@@ -41,7 +44,6 @@ class ModelParallel(Model):
         return self
 
     def _fit_loop(self, data):
-        self.model.module.freeze_bn()
         X = data[0]
         targets_tensors = data[1:]
 
@@ -114,6 +116,8 @@ class Retina(ModelParallel):
         self.encoder_depth = self.architecture_config['model_params']['encoder_depth']
         self.num_classes = self.architecture_config['model_params']['num_classes']
         self.pretrained = self.architecture_config['model_params']['pretrained']
+        self.pi = self.architecture_config['weights_init']['pi']
+
         self.set_model()
         self.weight_regularization = weight_regularization
 #        self.optimizer = optim.SGD(self.model.parameters(), lr=1e-3, momentum=0.9, weight_decay=1e-4)
@@ -121,6 +125,7 @@ class Retina(ModelParallel):
                                     **architecture_config['optimizer_params'])
         self.loss_function = [('FocalLoss', RetinaLoss(num_classes=self.num_classes), 1.0)]
         self.callbacks = callbacks(self.callbacks_config)
+        self.validation_loss = {}
 
     def transform(self, datagen, *args, **kwargs):
         if self.train_mode:
@@ -159,9 +164,11 @@ class Retina(ModelParallel):
                                pretrained_encoder=self.pretrained)
 
     def _initialize_model_weights(self):
-        # TODO: implement weights initialization from Retina paper
-        self.model.freeze_bn()
+        self.model.apply(partial(init_weights_retina, pi=self.pi))
 
+        self.model.freeze_bn()
+        # import pdb
+        # pdb.set_trace()
 
 def weight_regularization(model, regularize, weight_decay_conv2d):
     if regularize:
@@ -186,3 +193,13 @@ def callbacks(callbacks_config):
         callbacks=[experiment_timing, training_monitor, validation_monitor,
                    model_checkpoints, lr_scheduler, early_stopping, neptune_monitor,
                    ])
+
+
+def init_weights_retina(module, pi):
+    if hasattr(module, '__name__'):
+        b = -log((1 - pi) / pi)
+        if module.__name__ == 'final_layer':
+            module.bias.data.fill_(b)
+        elif module.__name__ == 'head_layer':
+            module.weight.data.normal_(0, pi)
+            module.bias.data.fill_(0)

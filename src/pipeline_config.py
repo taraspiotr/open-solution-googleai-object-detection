@@ -74,6 +74,7 @@ SOLUTION_CONFIG = AttrDict({
                                                        'weight_decay_conv2d': params.l2_reg_conv,
                                                        },
                                 'weights_init': {'function': 'he',
+                                                 'pi': params.pi
                                                  }
                                 },
         'training_config': {'epochs': params.epochs_nr,
@@ -82,7 +83,7 @@ SOLUTION_CONFIG = AttrDict({
             'model_checkpoint': {
                 'filepath': os.path.join(GLOBAL_CONFIG['exp_root'], 'checkpoints', 'unet', 'best.torch'),
                 'epoch_every': 1,
-                'minimize': not params.validate_with_map
+#                'minimize': not p
             },
             'exp_lr_scheduler': {'gamma': params.gamma,
                                  'epoch_every': 1},
