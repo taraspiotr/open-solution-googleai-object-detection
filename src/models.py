@@ -125,7 +125,6 @@ class Retina(ModelParallel):
                                     **architecture_config['optimizer_params'])
         self.loss_function = [('FocalLoss', RetinaLoss(num_classes=self.num_classes), 1.0)]
         self.callbacks = callbacks(self.callbacks_config)
-        self.validation_loss = {}
 
     def transform(self, datagen, *args, **kwargs):
         if self.train_mode:

@@ -244,17 +244,17 @@ class RetinaLoss(nn.Module):
         cls_loss = self.focal_loss(masked_cls_preds, cls_targets[pos_neg])
 
         # print('loc_loss = {}, num_pos = {}; cls_loss = {}, num_pos_neg = {}'.format(loc_loss.data.cpu().numpy(), num_pos, cls_loss.data.cpu().numpy(), num_pos_neg))
-#         if num_pos_neg > 0:
-#             cls_loss = cls_loss / num_pos_neg
-#             loss = cls_loss*10
-#         else:
-#             raise Exception('num_pos_neg == 0')
-#         if num_pos > 0:
-#             loc_loss = loc_loss / num_pos
-#             loss += loc_loss
-# #            print('cls_loss = {}, loc_loss = {}, loss = {}'.format(cls_loss, loc_loss, loss))
-        print('num', num_pos, num_pos_neg)
-        loss = (loc_loss + cls_loss) / num_pos
+        if num_pos_neg > 0:
+            cls_loss = cls_loss / num_pos_neg
+            loss = cls_loss*10
+        else:
+            raise Exception('num_pos_neg == 0')
+        if num_pos > 0:
+            loc_loss = loc_loss / num_pos
+            loss += loc_loss
+#            print('cls_loss = {}, loc_loss = {}, loss = {}'.format(cls_loss, loc_loss, loss))
+#         print('num', num_pos, num_pos_neg)
+#         loss = (loc_loss + cls_loss) / num_pos
         return loss
 
 
